@@ -4,7 +4,9 @@ env:
   GCS_BUCKET: autobuilds.grr-response.com
   GCS_BUCKET_OPENAPI: autobuilds-grr-openapi
   GCS_LATEST_PATH: _latest_server_deb
-  DOCKER_REPOSITORY: grrdocker/grr
+  DOCKER_REPOSITORY: ghcr.io/fredx30/grr
+  REGISTRY: ghcr.io
+  IMAGE_NAME: grr
 jobs:
 
   test-ubuntu:
@@ -279,70 +281,19 @@ jobs:
         run: |
           export BRANCH=$(echo $GITHUB_REF | cut -d'/' -f 3)
           ./appveyor/docker_build/build_docker_image.sh
-      - if: ${{ github.event_name == 'push' }} 
-        name: Log in to Docker Hub
-        uses: docker/login-action@v1
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@98669ae865ea3cffbcbaa878cf57c20bbf1c6c38
         with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+      - name: Log into registry ${{ env.REGISTRY }}
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - if: ${{ github.event_name == 'push' }}
         name: Push to ${{ env.DOCKER_REPOSITORY }}
         run: |
           docker push -a ${{ env.DOCKER_REPOSITORY }}
-  upload:
-    if: ${{ github.event_name == 'push' }}
-    runs-on: ubuntu-18.04
-    needs:
-      - build-push-docker
-    steps:
-      - uses: actions/checkout@v2
-      - name: Download installers from GitHub artifacts
-        id: download
-        uses: actions/download-artifact@v2
-        with:
-          path: _artifacts
-      - run: |
-          ls -la _artifacts/*/
-
-          COMMIT_TIME=$(git show -s --date='format-local:%Y-%m-%dT%H:%M:%SZ' --format="%cd" $GITHUB_SHA)
-          OUTPUT_DIR=gcs_upload_dir/${COMMIT_TIME}_${GITHUB_SHA}/
-          echo "OUTPUT_DIR=$OUTPUT_DIR" >> $GITHUB_ENV
-
-          mkdir -p $OUTPUT_DIR/centos/
-          mv -v _artifacts/centos-installers/* $OUTPUT_DIR/centos
-
-          mkdir -p $OUTPUT_DIR/ubuntu/
-          mv -v _artifacts/ubuntu-installers/* $OUTPUT_DIR/ubuntu
-
-          mkdir -p $OUTPUT_DIR/osx/
-          mv -v _artifacts/osx-installers/* $OUTPUT_DIR/osx
-
-          mkdir -p $OUTPUT_DIR/windows/
-          mv -v _artifacts/windows-installers/* $OUTPUT_DIR/windows
-
-          mkdir -p $OUTPUT_DIR/server_deb/
-          mv -v _artifacts/server-deb/* $OUTPUT_DIR/server_deb
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v0.2.1
-        with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-          service_account_key: ${{ secrets.GCP_SA_KEY }}
-          export_default_credentials: true
-      - name: Upload installers to GCS
-        uses: google-github-actions/upload-cloud-storage@main
-        with:
-          path: gcs_upload_dir/
-          destination: ${{ env.GCS_BUCKET }}
-          # Omit `path` (e.g. /home/runner/deploy/) in final GCS path.
-          parent: false
-      - name: Replace ${{ env.GCS_LATEST_PATH }} folder in GCS
-        run: |
-          gsutil rm gs://${{ env.GCS_BUCKET }}/${{ env.GCS_LATEST_PATH }}/** || true
-          gsutil cp -r $OUTPUT_DIR/server_deb/* gs://${{ env.GCS_BUCKET }}/${{ env.GCS_LATEST_PATH }}/
-      - name: Upload OpenAPI to GCS
-        uses: google-github-actions/upload-cloud-storage@main
-        with:
-          path: _artifacts/openapi/
-          destination: ${{ env.GCS_BUCKET_OPENAPI }}
-          # Omit `path` (e.g. /home/runner/deploy/) in final GCS path.
-          parent: false
