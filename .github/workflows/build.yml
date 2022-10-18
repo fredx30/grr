@@ -4,7 +4,9 @@ env:
   GCS_BUCKET: autobuilds.grr-response.com
   GCS_BUCKET_OPENAPI: autobuilds-grr-openapi
   GCS_LATEST_PATH: _latest_server_deb
-  DOCKER_REPOSITORY: ghcr.io
+  DOCKER_REPOSITORY: ghcr.io/fredx30/grr
+  REGISTRY: ghcr.io
+  IMAGE_NAME: grr
 jobs:
 
   test-ubuntu:
@@ -286,7 +288,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
       - name: Log into registry ${{ env.REGISTRY }}
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@28218f9b04b4f3f62068d7b6ce6ca5b26e35336c
+        uses: docker/login-action@v2
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
